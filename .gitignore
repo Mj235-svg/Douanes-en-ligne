@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dev.db
+dev.db-*
+.env
+storage/courses/*
+!storage/courses/.gitkeep
+public/covers/*
+!public/covers/.gitkeep
+*.log
