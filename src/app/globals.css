@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --color-ink: #1c1b19;
+  --color-cream: #faf6ee;
+  --color-cream-deep: #f0e9d8;
+  --color-school-green: #1f4d3d;
+  --color-school-green-light: #2c6b56;
+  --color-terracotta: #e0612b;
+  --color-terracotta-deep: #c14e1f;
+  --color-gold: #e8b340;
+  --color-line: #ddd4bd;
+
+  --background: var(--color-cream);
+  --foreground: var(--color-ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-ink: var(--color-ink);
+  --color-cream: var(--color-cream);
+  --color-cream-deep: var(--color-cream-deep);
+  --color-school-green: var(--color-school-green);
+  --color-school-green-light: var(--color-school-green-light);
+  --color-terracotta: var(--color-terracotta);
+  --color-terracotta-deep: var(--color-terracotta-deep);
+  --color-gold: var(--color-gold);
+  --color-line: var(--color-line);
+  --font-display: "Iowan Old Style", "Palatino Linotype", "URW Palladio L",
+    P052, serif;
+  --font-sans: "Inter var", "Inter", system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Le motif "cachet" — élément signature de la plateforme, évoquant un sceau
+   de validation académique. Utilisé pour les badges "cours vérifié" et
+   le bouton de confirmation de paiement. */
+.stamp-ring {
+  position: relative;
+}
+.stamp-ring::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border: 1.5px dashed currentColor;
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.texture-grain {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(28, 27, 25, 0.06) 1px,
+    transparent 0
+  );
+  background-size: 18px 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
