@@ -2,11 +2,18 @@
  * Module de paiement.
  *
  * Ce module définit une interface unique pour initier et vérifier un paiement,
- * avec deux implémentations :
+ * avec plusieurs implémentations :
  *  - "simulation" : pour développer/tester sans compte marchand réel
  *  - "cinetpay"   : intégration réelle avec CinetPay (Orange Money + MTN MoMo au Cameroun)
+ *  - "monetbil"   : intégration réelle avec Monetbil (Orange Money + MTN MoMo au Cameroun)
  *
- * Pour activer les vrais paiements, il suffira de :
+ * Pour activer les vrais paiements via Monetbil, il suffira de :
+ *  1. Créer un compte et un service sur https://www.monetbil.com/services
+ *  2. Renseigner MONETBIL_SERVICE_KEY et MONETBIL_SERVICE_SECRET dans .env
+ *  3. Mettre PAYMENT_MODE="monetbil" dans .env
+ *  4. Configurer l'URL de notification (webhook) chez Monetbil vers /api/payments/webhook
+ *
+ * Pour activer les vrais paiements via CinetPay, il suffira de :
  *  1. Créer un compte sur https://cinetpay.com
  *  2. Renseigner CINETPAY_API_KEY et CINETPAY_SITE_ID dans .env
  *  3. Mettre PAYMENT_MODE="cinetpay" dans .env
@@ -144,13 +151,109 @@ async function verifyCinetPayPayment(
 }
 
 // ---------------------------------------------------------------------------
-// Façade publique — le reste de l'app utilise uniquement ces deux fonctions
+// Implémentation MONETBIL — paiement réel Orange Money / MTN MoMo
+// Documentation officielle : https://www.monetbil.company/doc
 // ---------------------------------------------------------------------------
+
+// Monetbil exige un numéro de téléphone camerounais sans le préfixe +237.
+// On nettoie ce qui est saisi par l'étudiant pour ne garder que les chiffres
+// utiles (en retirant un éventuel +237 ou 237 en tête).
+function normalizeCameroonPhone(phone: string): string {
+  const digitsOnly = phone.replace(/\D/g, "");
+  if (digitsOnly.startsWith("237") && digitsOnly.length > 9) {
+    return digitsOnly.slice(3);
+  }
+  return digitsOnly;
+}
+
+async function initiateMonetbilPayment(
+  params: InitiatePaymentParams
+): Promise<InitiatePaymentResult> {
+  try {
+    const serviceKey = process.env.MONETBIL_SERVICE_KEY;
+    const response = await fetch(
+      `https://api.monetbil.com/widget/v2.1/${serviceKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: params.amountXAF,
+          currency: "XAF",
+          country: "CM",
+          locale: "fr",
+          phone: normalizeCameroonPhone(params.customerPhone),
+          item_ref: params.orderReference,
+          payment_ref: params.orderReference,
+          first_name: params.customerName,
+          email: params.customerEmail,
+          return_url: params.returnUrl,
+          notify_url: params.notifyUrl,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.success && data.payment_url) {
+      return {
+        success: true,
+        paymentUrl: data.payment_url,
+        externalTxId: params.orderReference,
+      };
+    }
+
+    return {
+      success: false,
+      errorMessage: data.message || "Erreur lors de l'initiation du paiement",
+    };
+  } catch (error) {
+    return {
+      success: false,
+      errorMessage: error instanceof Error ? error.message : "Erreur réseau",
+    };
+  }
+}
+
+async function verifyMonetbilPayment(
+  orderReference: string
+): Promise<VerifyPaymentResult> {
+  try {
+    const serviceSecret = process.env.MONETBIL_SERVICE_SECRET;
+    const response = await fetch(
+      "https://api.monetbil.com/payment/v1/checkPaymentStatus",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service: serviceSecret,
+          paymentRef: orderReference,
+        }),
+      }
+    );
+    const data = await response.json();
+
+    // status : 1 = succès, -1 = annulé, 0 = échec (cf. doc Monetbil)
+    if (data?.status === 1 || data?.transaction?.status === 1) {
+      return { status: "PAID", externalTxId: orderReference };
+    }
+    if (data?.status === 0 || data?.transaction?.status === 0) {
+      return { status: "FAILED" };
+    }
+    return { status: "PENDING" };
+  } catch {
+    return { status: "PENDING" };
+  }
+}
+
+
 export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<InitiatePaymentResult> {
   if (PAYMENT_MODE === "cinetpay") {
     return initiateCinetPayPayment(params);
+  }
+  if (PAYMENT_MODE === "monetbil") {
+    return initiateMonetbilPayment(params);
   }
   return initiateSimulationPayment(params);
 }
@@ -160,6 +263,9 @@ export async function verifyPayment(
 ): Promise<VerifyPaymentResult> {
   if (PAYMENT_MODE === "cinetpay") {
     return verifyCinetPayPayment(orderReference);
+  }
+  if (PAYMENT_MODE === "monetbil") {
+    return verifyMonetbilPayment(orderReference);
   }
   return verifySimulationPayment();
 }
