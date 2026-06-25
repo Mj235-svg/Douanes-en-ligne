@@ -5,17 +5,39 @@ import { orders } from "@/db/schema";
 import { verifyPayment } from "@/lib/payment";
 
 /**
- * Ce webhook est appelé par CinetPay (en production) pour notifier qu'un
- * paiement a été effectué. Par sécurité, on ne fait JAMAIS confiance
- * directement aux données reçues : on rappelle l'API de l'agrégateur pour
- * vérifier le statut réel de la transaction avant de marquer la commande
- * comme payée. C'est une protection essentielle contre les faux appels.
+ * Ce webhook est appelé par l'agrégateur de paiement (CinetPay ou Monetbil,
+ * en production) pour notifier qu'un paiement a été effectué. Par sécurité,
+ * on ne fait JAMAIS confiance directement aux données reçues : on rappelle
+ * l'API de l'agrégateur pour vérifier le statut réel de la transaction avant
+ * de marquer la commande comme payée. C'est une protection essentielle
+ * contre les faux appels.
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const reference =
-      body.cpm_trans_id || body.transaction_id || body.orderReference;
+    const contentType = req.headers.get("content-type") || "";
+    let body: Record<string, unknown> = {};
+
+    if (contentType.includes("application/json")) {
+      body = await req.json().catch(() => ({}));
+    } else {
+      // Monetbil envoie ses notifications en formulaire (x-www-form-urlencoded),
+      // pas en JSON.
+      const formData = await req.formData().catch(() => null);
+      if (formData) {
+        formData.forEach((value, key) => {
+          body[key] = value;
+        });
+      }
+    }
+
+    const reference = String(
+      body.cpm_trans_id || // CinetPay
+        body.payment_ref || // Monetbil
+        body.item_ref || // Monetbil (alternative)
+        body.transaction_id ||
+        body.orderReference ||
+        ""
+    );
 
     if (!reference) {
       return NextResponse.json({ error: "Référence manquante" }, { status: 400 });
